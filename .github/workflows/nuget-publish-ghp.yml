@@ -1,0 +1,52 @@
+name: Publish NuGet package to GitHub Packages
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: .NET SDK version to use
+        type: string
+        default: "8.0.x"
+      project-path:
+        description: Path to the .csproj file or directory
+        type: string
+        default: "."
+      configuration:
+        description: Build configuration
+        type: string
+        default: "Release"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Add GitHub Packages source
+        run: dotnet nuget add source "https://nuget.pkg.github.com/Meshcaster/index.json" --name github --username Meshcaster --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ inputs.project-path }}
+
+      - name: Build
+        run: dotnet build ${{ inputs.project-path }} -c ${{ inputs.configuration }} --no-restore
+
+      - name: Test
+        run: dotnet test ${{ inputs.project-path }} -c ${{ inputs.configuration }} --no-build --verbosity normal
+
+      - name: Pack
+        run: dotnet pack ${{ inputs.project-path }} -c ${{ inputs.configuration }} --no-build -o ./nupkgs
+
+      - name: Publish to GitHub Packages
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source github --skip-duplicate
