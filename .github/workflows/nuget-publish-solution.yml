@@ -1,0 +1,49 @@
+name: Publish NuGet packages (solution)
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: .NET SDK version to use
+        type: string
+        default: "8.0.x"
+      solution-path:
+        description: Path to the .sln file
+        type: string
+        default: "."
+      configuration:
+        description: Build configuration
+        type: string
+        default: "Release"
+      nuget-source:
+        description: NuGet source URL
+        type: string
+        default: "https://api.nuget.org/v3/index.json"
+    secrets:
+      nuget-api-key:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ inputs.solution-path }}
+
+      - name: Build
+        run: dotnet build ${{ inputs.solution-path }} -c ${{ inputs.configuration }} --no-restore
+
+      - name: Test
+        run: dotnet test ${{ inputs.solution-path }} -c ${{ inputs.configuration }} --no-build --verbosity normal
+
+      - name: Pack
+        run: dotnet pack ${{ inputs.solution-path }} -c ${{ inputs.configuration }} --no-build -o ./nupkgs
+
+      - name: Publish to NuGet
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.nuget-api-key }} --source ${{ inputs.nuget-source }} --skip-duplicate
