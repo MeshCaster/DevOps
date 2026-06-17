@@ -19,13 +19,16 @@ on:
         description: NuGet source URL
         type: string
         default: "https://api.nuget.org/v3/index.json"
-    secrets:
-      nuget-api-key:
+      nuget-user:
+        description: nuget.org username (profile name) for trusted publishing
+        type: string
         required: true
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -45,5 +48,11 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.project-path }} -c ${{ inputs.configuration }} --no-build -o ./nupkgs
 
+      - name: NuGet login (trusted publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ inputs.nuget-user }}
+
       - name: Publish to NuGet
-        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.nuget-api-key }} --source ${{ inputs.nuget-source }} --skip-duplicate
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source ${{ inputs.nuget-source }} --skip-duplicate
