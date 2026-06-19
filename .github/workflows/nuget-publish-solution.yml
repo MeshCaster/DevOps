@@ -49,6 +49,12 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.solution-path }} -c ${{ inputs.configuration }} --no-build -o ./nupkgs
 
+      - name: Debug OIDC ref
+        run: |
+          echo "Ref: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Workflow ref: ${{ github.workflow_ref }}"
+
       - name: NuGet login (trusted publishing)
         uses: NuGet/login@v1
         id: nuget-login
