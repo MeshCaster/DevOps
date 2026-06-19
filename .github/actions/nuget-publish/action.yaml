@@ -1,9 +1,9 @@
-name: NuGet Publish (solution)
-description: Build, test, pack, and publish a .NET solution to NuGet via trusted publishing (OIDC).
+name: NuGet Publish (GitHub Packages)
+description: Build, test, pack, and publish a .NET solution to a private GitHub Packages feed.
 
 inputs:
   solution-path:
-    description: Path to the .sln file
+    description: Path to the .sln file (or project)
     required: false
     default: "."
   dotnet-version:
@@ -14,13 +14,16 @@ inputs:
     description: Build configuration
     required: false
     default: "Release"
-  nuget-source:
-    description: NuGet source URL
-    required: false
-    default: "https://api.nuget.org/v3/index.json"
-  nuget-user:
-    description: nuget.org username (profile name) for trusted publishing
+  org:
+    description: GitHub org/owner that owns the Packages feed
     required: true
+  token:
+    description: Token with packages:write (pass secrets.GITHUB_TOKEN)
+    required: true
+  run-tests:
+    description: Whether to run dotnet test
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -38,6 +41,7 @@ runs:
       run: dotnet build "${{ inputs.solution-path }}" -c "${{ inputs.configuration }}" --no-restore
 
     - name: Test
+      if: ${{ inputs.run-tests == 'true' }}
       shell: bash
       run: dotnet test "${{ inputs.solution-path }}" -c "${{ inputs.configuration }}" --no-build --verbosity normal
 
@@ -45,16 +49,10 @@ runs:
       shell: bash
       run: dotnet pack "${{ inputs.solution-path }}" -c "${{ inputs.configuration }}" --no-build -o ./nupkgs
 
-    - name: NuGet login (trusted publishing)
-      uses: NuGet/login@v1
-      id: login
-      with:
-        user: ${{ inputs.nuget-user }}
-
-    - name: Publish to NuGet
+    - name: Publish to GitHub Packages
       shell: bash
       run: >
         dotnet nuget push ./nupkgs/*.nupkg
-        --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
-        --source "${{ inputs.nuget-source }}"
+        --api-key "${{ inputs.token }}"
+        --source "https://nuget.pkg.github.com/${{ inputs.org }}/index.json"
         --skip-duplicate
