@@ -1,0 +1,6 @@
+# Never commit real keys — this tool writes them to ~/.ssh, but guard against
+# anyone generating into this folder by mistake.
+*
+!.gitignore
+!gen-keys.sh
+!README.md

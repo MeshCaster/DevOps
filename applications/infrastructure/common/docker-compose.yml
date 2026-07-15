@@ -1,0 +1,74 @@
+name: meshcaster-common-infra
+
+# Shared infrastructure components (Postgres, RabbitMQ, Redis) that every app on
+# the host can talk to over the external `meshcaster` network. Bring it up once
+# per server; individual app stacks attach to the same network by name.
+#
+# Credentials come from the *environment* (no env_file), so the stack can be
+# deployed remotely with generated secrets and NO .env file on the server:
+#
+#   Remote (recommended):  tools/infra/deploy-common-infra.sh <user@host>
+#   Local dev:             cp .env.example .env && docker compose up -d
+#                          (compose auto-loads ./.env for interpolation)
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: meshcaster-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports: ["5432:5432"]
+    volumes:
+      - meshcaster_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: meshcaster-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    ports: ["6379:6379"]
+    volumes:
+      - meshcaster_redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: meshcaster-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-rabbit}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+    ports: ["5672:5672", "15672:15672"]   # 5672 AMQP, 15672 management UI
+    volumes:
+      - meshcaster_rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  meshcaster_pg:
+    name: meshcaster_pg
+  meshcaster_redis:
+    name: meshcaster_redis
+  meshcaster_rabbitmq:
+    name: meshcaster_rabbitmq
+
+networks:
+  default:
+    name: meshcaster        # the shared external network apps attach to
+    external: true

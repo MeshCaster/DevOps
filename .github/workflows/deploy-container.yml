@@ -1,0 +1,128 @@
+name: Deploy container to CONTABO
+
+# Reusable workflow: build a Docker image, push it to GitHub Container Registry,
+# then SSH into a CONTABO VPS and (re)start the container from the fresh image.
+#
+# Call it from a consumer repo, e.g.:
+#
+#   jobs:
+#     deploy:
+#       uses: MeshCaster/DevOps/.github/workflows/deploy-container.yml@main
+#       with:
+#         image-name: app-delivery-api
+#         container-name: app-delivery-api
+#         host-port: 5000
+#         container-port: 80
+#         aspnetcore-environment: Production
+#         volume-args: "-v /var/www/20kvadrati/uploads:/app/uploads"
+#       secrets:
+#         host: ${{ secrets.CONTABO_HOST }}
+#         username: ${{ secrets.CONTABO_USERNAME }}
+#         ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: GHCR image name (without owner), e.g. app-delivery-api
+        type: string
+        required: true
+      container-name:
+        description: Name of the container to run on the host
+        type: string
+        required: true
+      host-port:
+        description: Port published on the host
+        type: number
+        required: true
+      container-port:
+        description: Port the app listens on inside the container
+        type: number
+        default: 80
+      aspnetcore-environment:
+        description: ASPNETCORE_ENVIRONMENT value
+        type: string
+        default: "Production"
+      volume-args:
+        description: 'Extra "docker run" volume flags, single line (e.g. "-v /host:/app/uploads")'
+        type: string
+        default: ""
+      extra-env:
+        description: 'Extra "docker run" -e flags, single line (e.g. "-e Foo=Bar -e Baz=Qux")'
+        type: string
+        default: ""
+      network:
+        description: Docker network to attach the container to (e.g. meshcaster, to reach shared Postgres/Redis/RabbitMQ). Empty = default bridge.
+        type: string
+        default: ""
+      ssh-port:
+        description: SSH port on the CONTABO host
+        type: number
+        default: 22
+    secrets:
+      host:
+        description: CONTABO host / IP (pass secrets.CONTABO_HOST)
+        required: true
+      username:
+        description: SSH username on CONTABO (pass secrets.CONTABO_USERNAME)
+        required: true
+      ssh-private-key:
+        description: SSH private key for CONTABO (pass secrets.CONTABO_SSH_PRIVATE_KEY)
+        required: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ github.sha }}
+
+      - name: Deploy to CONTABO
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.host }}
+          username: ${{ secrets.username }}
+          key: ${{ secrets.ssh-private-key }}
+          port: ${{ inputs.ssh-port }}
+          script: |
+            # Login to GitHub Container Registry
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest image
+            docker pull ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
+
+            # Stop and remove old container
+            docker stop ${{ inputs.container-name }} || true
+            docker rm ${{ inputs.container-name }} || true
+
+            # Run new container
+            docker run -d \
+              --name ${{ inputs.container-name }} \
+              ${{ inputs.network && format('--network {0}', inputs.network) || '' }} \
+              -p ${{ inputs.host-port }}:${{ inputs.container-port }} \
+              ${{ inputs.volume-args }} \
+              --restart unless-stopped \
+              -e ASPNETCORE_ENVIRONMENT=${{ inputs.aspnetcore-environment }} \
+              -e ASPNETCORE_URLS=http://+:${{ inputs.container-port }} \
+              ${{ inputs.extra-env }} \
+              ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
+
+            # Cleanup old images
+            docker image prune -f
