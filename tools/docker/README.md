@@ -53,6 +53,29 @@ sudo ./setup-docker.sh --user deploy
 sudo ./setup-docker.sh --no-usermod
 ```
 
+## Running on a remote VPS (no git/download on the host)
+
+`remote-setup.sh` streams `setup-docker.sh` into the remote shell over SSH, so
+the target host needs nothing but SSH access and a sudo-capable user — no git,
+no `curl`, and no leftover files on the remote.
+
+```bash
+# dry-run against a host first
+tools/docker/remote-setup.sh root@vps1 -- --dry-run
+
+# real run
+tools/docker/remote-setup.sh root@vps1
+
+# custom port, key, and a service user
+tools/docker/remote-setup.sh -p 2222 -i ~/.ssh/vps1 deploy@vps1 -- --user deploy
+```
+
+| Flag | Description |
+|------|-------------|
+| `-p <port>` | SSH port (default: `22`). |
+| `-i <identity>` | SSH private key file. |
+| Args after `--` | Forwarded verbatim to `setup-docker.sh` (e.g. `--dry-run`, `--user`, `--no-usermod`). |
+
 ## After install
 
 Group membership takes effect on your next login. To apply it immediately:
