@@ -61,4 +61,5 @@ if [[ ${#REMOTE_ARGS[@]} -gt 0 ]]; then
 fi
 
 # -s reads the script from stdin; args after `--` are $1.. inside setup-docker.sh.
-exec ssh "${SSH_OPTS[@]}" "$TARGET" 'bash -s --' "${REMOTE_ARGS[@]}" < "$LOCAL_SCRIPT"
+# ${arr[@]+...} guards against macOS bash 3.2 treating an empty array as unbound.
+exec ssh "${SSH_OPTS[@]}" "$TARGET" 'bash -s --' ${REMOTE_ARGS[@]+"${REMOTE_ARGS[@]}"} < "$LOCAL_SCRIPT"
