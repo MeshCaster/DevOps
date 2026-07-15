@@ -1,2 +1,0 @@
-CREATE DATABASE gamezone;
-CREATE DATABASE vapi;
