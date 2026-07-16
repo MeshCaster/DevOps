@@ -3,8 +3,11 @@ name: Deploy container to CONTABO
 # Reusable workflow: build a Docker image, push it to GitHub Container Registry,
 # then SSH into a CONTABO VPS and (re)start the container from the fresh image.
 #
-# Call it from a consumer repo, e.g.:
+# Works for any containerized app. .NET apps get ASPNETCORE_ENVIRONMENT +
+# ASPNETCORE_URLS set automatically (aspnetcore: true, the default); for Node
+# and other stacks pass aspnetcore: false and set runtime env via extra-env.
 #
+# .NET example:
 #   jobs:
 #     deploy:
 #       uses: MeshCaster/DevOps/.github/workflows/deploy-container.yml@main
@@ -13,12 +16,21 @@ name: Deploy container to CONTABO
 #         container-name: app-delivery-api
 #         host-port: 5000
 #         container-port: 80
-#         aspnetcore-environment: Production
-#         volume-args: "-v /var/www/20kvadrati/uploads:/app/uploads"
+#         network: meshcaster
 #       secrets:
 #         host: ${{ secrets.CONTABO_HOST }}
 #         username: ${{ secrets.CONTABO_USERNAME }}
 #         ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
+#
+# Node/Next.js example:
+#   with:
+#     image-name: universal-mep-site
+#     container-name: universal-mep-site
+#     host-port: 3000
+#     container-port: 3000
+#     aspnetcore: false
+#     extra-env: "-e NODE_ENV=production -e PORT=3000 -e HOSTNAME=0.0.0.0"
+#     network: meshcaster
 
 on:
   workflow_call:
@@ -39,8 +51,12 @@ on:
         description: Port the app listens on inside the container
         type: number
         default: 80
+      aspnetcore:
+        description: If true, set ASPNETCORE_ENVIRONMENT + ASPNETCORE_URLS automatically (for .NET apps). Set false for Node/other stacks.
+        type: boolean
+        default: true
       aspnetcore-environment:
-        description: ASPNETCORE_ENVIRONMENT value
+        description: ASPNETCORE_ENVIRONMENT value (only used when aspnetcore is true)
         type: string
         default: "Production"
       volume-args:
@@ -82,6 +98,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Compute image ref (GHCR requires lowercase)
+        id: img
+        run: echo "ref=ghcr.io/${OWNER,,}/${NAME,,}" >> "$GITHUB_OUTPUT"
+        env:
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ inputs.image-name }}
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -95,11 +118,11 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ github.sha }}
+            ${{ steps.img.outputs.ref }}:latest
+            ${{ steps.img.outputs.ref }}:${{ github.sha }}
 
       - name: Deploy to CONTABO
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.host }}
           username: ${{ secrets.username }}
@@ -110,7 +133,7 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull latest image
-            docker pull ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
+            docker pull ${{ steps.img.outputs.ref }}:latest
 
             # Stop and remove old container
             docker stop ${{ inputs.container-name }} || true
@@ -124,10 +147,10 @@ jobs:
               ${{ inputs.volume-args }} \
               ${{ inputs.env-file && format('--env-file {0}', inputs.env-file) || '' }} \
               --restart unless-stopped \
-              -e ASPNETCORE_ENVIRONMENT=${{ inputs.aspnetcore-environment }} \
-              -e ASPNETCORE_URLS=http://+:${{ inputs.container-port }} \
+              ${{ inputs.aspnetcore && format('-e ASPNETCORE_ENVIRONMENT={0}', inputs.aspnetcore-environment) || '' }} \
+              ${{ inputs.aspnetcore && format('-e ASPNETCORE_URLS=http://+:{0}', inputs.container-port) || '' }} \
               ${{ inputs.extra-env }} \
-              ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest
+              ${{ steps.img.outputs.ref }}:latest
 
             # Cleanup old images
             docker image prune -f
