@@ -122,6 +122,7 @@ Host-side tooling lives in [`tools/`](tools/):
 | [`tools/nginx`](tools/nginx/README.md) | Containerized nginx reverse proxy with Let's Encrypt SSL + websockets. |
 | [`tools/ssh-keys`](tools/ssh-keys/README.md) | Generate provider-scoped SSH deploy keys to migrate apps (Hostinger → CONTABO). |
 | [`tools/infra`](tools/infra/README.md) | Deploy the shared Postgres/RabbitMQ/Redis stack to a remote host with generated secrets (no `.env` on the server). |
+| [`tools/transfer`](tools/transfer/README.md) | Copy directories (e.g. upload folders) between servers with resumable rsync-over-SSH. |
 
 ## Applications
 

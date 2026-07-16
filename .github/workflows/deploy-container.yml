@@ -51,6 +51,10 @@ on:
         description: 'Extra "docker run" -e flags, single line (e.g. "-e Foo=Bar -e Baz=Qux")'
         type: string
         default: ""
+      env-file:
+        description: 'Path on the server to an env file passed to the container (--env-file), for apps with many runtime secrets. Empty = none.'
+        type: string
+        default: ""
       network:
         description: Docker network to attach the container to (e.g. meshcaster, to reach shared Postgres/Redis/RabbitMQ). Empty = default bridge.
         type: string
@@ -118,6 +122,7 @@ jobs:
               ${{ inputs.network && format('--network {0}', inputs.network) || '' }} \
               -p ${{ inputs.host-port }}:${{ inputs.container-port }} \
               ${{ inputs.volume-args }} \
+              ${{ inputs.env-file && format('--env-file {0}', inputs.env-file) || '' }} \
               --restart unless-stopped \
               -e ASPNETCORE_ENVIRONMENT=${{ inputs.aspnetcore-environment }} \
               -e ASPNETCORE_URLS=http://+:${{ inputs.container-port }} \
