@@ -30,6 +30,9 @@
 #
 #   --base <dir>     Base directory for the stack (default: /opt/nginx).
 #   --network <name> External Docker network apps attach to (default: meshcaster).
+#   --mount <H:C[:ro]> Extra bind mount for the nginx container, e.g. to serve
+#                    static files (repeatable). Example:
+#                    --mount /var/www/app/uploads:/var/www/app/uploads:ro
 #   --no-network     Do not create the network (assume it already exists).
 #   -h, --help       Show this help.
 #
@@ -38,20 +41,28 @@ set -euo pipefail
 BASE="/opt/nginx"
 NETWORK="meshcaster"
 CREATE_NETWORK=1
+MOUNTS=()
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --base)       BASE="${2:?--base needs a value}"; shift 2 ;;
     --network)    NETWORK="${2:?--network needs a value}"; shift 2 ;;
+    --mount)      MOUNTS+=("${2:?--mount needs a value}"); shift 2 ;;
     --no-network) CREATE_NETWORK=0; shift ;;
     -h|--help)    usage 0 ;;
     *)            die "unknown argument: $1 (try --help)" ;;
   esac
+done
+
+# Build extra "- host:container" volume lines (6-space indent) for the compose.
+EXTRA_VOLUMES=""
+for _m in ${MOUNTS[@]+"${MOUNTS[@]}"}; do
+  EXTRA_VOLUMES+="      - ${_m}"$'\n'
 done
 
 priv() { if [[ $(id -u) -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
@@ -131,9 +142,10 @@ proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-Host  $host;
 proxy_set_header Upgrade           $http_upgrade;
 proxy_set_header Connection        $connection_upgrade;
-proxy_read_timeout 60s;
-proxy_send_timeout 60s;
 proxy_buffering off;
+# No proxy_read_timeout/proxy_send_timeout here: nginx defaults to 60s, and
+# hardcoding them would clash ("duplicate directive") with per-location
+# overrides (e.g. long SignalR/websocket timeouts). Set them per app instead.
 EOF
 
 log "Writing websocket upgrade map + default server (loaded first)"
@@ -182,7 +194,7 @@ services:
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
       - ./logs/nginx:/var/log/nginx
-    networks:
+${EXTRA_VOLUMES}    networks:
       - proxy
 
   # Run on demand: docker compose run --rm certbot ...  (see add-app.sh / renew.sh)

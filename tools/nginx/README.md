@@ -113,10 +113,47 @@ Before running `add-app.sh` for a domain:
 - DNS `A`/`AAAA` records for every domain point at this server.
 - Ports **80** and **443** are open to the internet (certbot needs 80).
 
-## Running from your workstation
+## Running remotely from your laptop (recommended)
 
-These are interactive, so run them **on the server** (`ssh` in, then run). To
-get the files there without git, copy the folder over:
+`remote-setup.sh` does the whole setup on a remote host over SSH — no files to
+run on the server by hand. It streams `init-nginx.sh` in, obtains certificates
+via the certbot container, installs a hand-written vhost, and reloads nginx, in
+the correct order (bootstrap → certs → vhost → reload).
+
+```bash
+# bootstrap only
+tools/nginx/remote-setup.sh -i ~/.ssh/meshcaster_contabo root@contabo-host
+
+# full app setup: uploads mount + grouped certs + a custom multi-vhost file
+tools/nginx/remote-setup.sh -i ~/.ssh/meshcaster_contabo root@contabo-host \
+  --mount /var/www/20kvadrati/uploads:/var/www/20kvadrati/uploads:ro \
+  --email you@example.com \
+  --cert "example.com www.example.com api.example.com" \
+  --cert "admin.example.com" \
+  --conf ./example.conf
+
+# preview without changing anything
+tools/nginx/remote-setup.sh --dry-run root@contabo-host --conf ./example.conf ...
+```
+
+| Flag | Description |
+|------|-------------|
+| `-p` / `-i` | SSH port / private key. |
+| `--base` / `--network` | Stack dir (default `/opt/nginx`) / network (default `meshcaster`). |
+| `--mount <H:C[:ro]>` | Extra bind mount for nginx (e.g. static uploads); repeatable. |
+| `--conf <file>` | Local vhost file to install into `conf.d/`. |
+| `--email <addr>` | ACME email (required with `--cert`). |
+| `--cert "<d1 d2>"` | Domains for one certificate; repeatable for multiple certs. |
+| `--staging` | Let's Encrypt staging (testing). |
+| `--skip-init` | Only certs/conf/reload; don't re-bootstrap. |
+
+`--mount` is also a new flag on `init-nginx.sh` itself, so static-file serving
+works even when nginx runs in a container (it can't see host paths otherwise).
+
+## Running on the server directly
+
+`init-nginx.sh` / `add-app.sh` can still be run **on the box** (the latter is
+interactive). To get them there without git:
 
 ```bash
 scp -r tools/nginx user@vps1:/tmp/nginx-tools
