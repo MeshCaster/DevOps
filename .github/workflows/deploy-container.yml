@@ -142,6 +142,10 @@ jobs:
           key: ${{ secrets.ssh-private-key }}
           port: ${{ inputs.ssh-port }}
           script: |
+            # Without this, a failing `docker run` is masked by the exit code of
+            # the last command in the script and the deploy reports success.
+            set -e
+
             # Login to GitHub Container Registry
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -164,6 +168,17 @@ jobs:
               ${{ inputs.aspnetcore && format('-e ASPNETCORE_URLS=http://+:{0}', inputs.container-port) || '' }} \
               ${{ inputs.extra-env }} \
               ${{ steps.img.outputs.ref }}:latest
+
+            # `docker run -d` exits 0 once the container is *created*, so a container
+            # that boots and dies immediately (bad config, missing env) still looks
+            # like a success. Confirm it is actually up, and surface logs if not.
+            sleep 5
+            if [ "$(docker inspect -f '{{.State.Running}}' ${{ inputs.container-name }} 2>/dev/null)" != "true" ]; then
+              echo "::error::Container ${{ inputs.container-name }} is not running after deploy"
+              docker logs --tail 50 ${{ inputs.container-name }} 2>&1 || true
+              exit 1
+            fi
+            echo "Container ${{ inputs.container-name }} is up."
 
             # Cleanup old images
             docker image prune -f
