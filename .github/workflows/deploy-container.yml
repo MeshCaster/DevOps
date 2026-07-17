@@ -39,6 +39,13 @@ name: Deploy container to CONTABO
 #     container-name: mediathek-api
 #     dockerfile: src/Meshcaster.Mediathek.Api/Dockerfile
 #     network: meshcaster
+#
+# Dockerfile restoring from a private feed (e.g. MeshCaster.* on GitHub Packages):
+# pass the credentials as BuildKit secrets, matching the ids the Dockerfile mounts.
+#   secrets:
+#     build-secrets: |
+#       gh_user=${{ github.actor }}
+#       gh_token=${{ secrets.GITHUB_TOKEN }}
 
 on:
   workflow_call:
@@ -101,6 +108,12 @@ on:
       ssh-private-key:
         description: SSH private key for CONTABO (pass secrets.CONTABO_SSH_PRIVATE_KEY)
         required: true
+      build-secrets:
+        description: >-
+          Multiline "id=value" pairs exposed to the build as BuildKit secrets, for Dockerfiles
+          that restore from a private feed. Consumed via --mount=type=secret,id=<id>, so the
+          value never lands in an image layer. Empty = none.
+        required: false
 
 jobs:
   build-and-deploy:
@@ -130,6 +143,7 @@ jobs:
           context: .
           file: ${{ inputs.dockerfile }}
           push: true
+          secrets: ${{ secrets.build-secrets }}
           tags: |
             ${{ steps.img.outputs.ref }}:latest
             ${{ steps.img.outputs.ref }}:${{ github.sha }}
