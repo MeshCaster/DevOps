@@ -31,6 +31,14 @@ name: Deploy container to CONTABO
 #     aspnetcore: false
 #     extra-env: "-e NODE_ENV=production -e PORT=3000 -e HOSTNAME=0.0.0.0"
 #     network: meshcaster
+#
+# Monorepo building several images: call this workflow once per image and point
+# `dockerfile` at each one (the build context stays the repo root).
+#   with:
+#     image-name: mediathek-api
+#     container-name: mediathek-api
+#     dockerfile: src/Meshcaster.Mediathek.Api/Dockerfile
+#     network: meshcaster
 
 on:
   workflow_call:
@@ -43,6 +51,10 @@ on:
         description: Name of the container to run on the host
         type: string
         required: true
+      dockerfile:
+        description: Path to the Dockerfile, relative to the repo root. Override for monorepos that build several images (e.g. src/My.Api/Dockerfile).
+        type: string
+        default: Dockerfile
       host-port:
         description: Port published on the host
         type: number
@@ -116,6 +128,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ inputs.dockerfile }}
           push: true
           tags: |
             ${{ steps.img.outputs.ref }}:latest
