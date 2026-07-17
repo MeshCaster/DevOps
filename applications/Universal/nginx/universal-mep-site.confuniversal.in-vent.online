@@ -1,0 +1,39 @@
+# universal-mep-site — Next.js reverse proxy for the tools/nginx stack.
+#
+# Upstream: container `universal-mep-site:3000` on the `meshcaster` network.
+# Next.js serves its own static assets (/_next/*, images), so this is a plain
+# single-upstream proxy — no static-file block needed.
+#
+# Before use: replace MEP_DOMAIN everywhere (server_name + the 3 cert paths)
+# with the real hostname, e.g.
+#   sed -i 's/MEP_DOMAIN/mep.example.com/g' universal-mep-site.conf
+
+# ---------- HTTP :80 — ACME challenge + redirect to HTTPS ----------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name MEP_DOMAIN;
+
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# ---------- HTTPS :443 — proxy to the Next.js container ----------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name MEP_DOMAIN;
+
+    ssl_certificate         /etc/letsencrypt/live/MEP_DOMAIN/fullchain.pem;
+    ssl_certificate_key     /etc/letsencrypt/live/MEP_DOMAIN/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/MEP_DOMAIN/chain.pem;
+    include /etc/nginx/snippets/ssl-params.conf;
+
+    client_max_body_size 20M;
+
+    location / {
+        proxy_pass http://universal-mep-site:3000;
+        include /etc/nginx/snippets/proxy-common.conf;
+    }
+}

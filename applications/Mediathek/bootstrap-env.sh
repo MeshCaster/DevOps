@@ -55,6 +55,7 @@ cat > "$ENV_DIR/mediathek-api.env" <<EOF
 ConnectionStrings__MediathekDb=Host=$PG_CONTAINER;Port=5432;Database=$DB_NAME;Username=$PG_USER;Password=$PG_PASS
 Auth__Authority=$IDENTITY_AUTHORITY
 Auth__Audience=mediathek-api
+Database__AutoMigrate=true
 EOF
 
 cat > "$ENV_DIR/mediathek-admin.env" <<EOF
@@ -72,5 +73,5 @@ echo "  $ENV_DIR/mediathek-api.env"
 echo "  $ENV_DIR/mediathek-admin.env"
 echo
 echo "Re-run the Deploy workflow in MeshCaster/Meshcaster.Mediathek."
-echo "Note: the API only applies migrations in Development, so the '$DB_NAME' schema"
-echo "is still empty. Apply migrations before the API will serve traffic."
+echo "The API env sets Database__AutoMigrate=true, so it will build the '$DB_NAME'"
+echo "schema on first start. Demo data is never seeded outside Development."
