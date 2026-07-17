@@ -112,6 +112,33 @@ jobs:
       ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
 ```
 
+### Deploy several images from one repo
+
+Call the workflow once per image and point `dockerfile` at each one; the build
+context stays the repo root. Runtime secrets belong in an `env-file` on the
+server rather than `extra-env`, which would otherwise appear in Actions logs:
+
+```yaml
+jobs:
+  api:
+    permissions:
+      contents: read
+      packages: write
+    uses: MeshCaster/DevOps/.github/workflows/deploy-container.yml@main
+    with:
+      image-name: mediathek-api
+      container-name: mediathek-api
+      dockerfile: src/Meshcaster.Mediathek.Api/Dockerfile
+      host-port: 5100
+      container-port: 8080
+      env-file: /opt/meshcaster/mediathek-api.env
+      network: meshcaster
+    secrets:
+      host: ${{ secrets.CONTABO_HOST }}
+      username: ${{ secrets.CONTABO_USERNAME }}
+      ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
+```
+
 ## Tools
 
 Host-side tooling lives in [`tools/`](tools/):
@@ -132,6 +159,7 @@ Per-app and shared infrastructure compose stacks live in
 | Stack | Description |
 |-------|-------------|
 | [`applications/infrastructure/common`](applications/infrastructure/common/README.md) | Shared Postgres + RabbitMQ + Redis on the `meshcaster` network. |
+| [`applications/Mediathek`](applications/Mediathek/nginx/mediathek.conf) | nginx vhosts for the Meshcaster.Mediathek API + admin panel. |
 
 ## Inputs
 
@@ -159,6 +187,7 @@ Per-app and shared infrastructure compose stacks live in
 |-------|---------|-------------|
 | `image-name` | — (required) | GHCR image name (without owner). |
 | `container-name` | — (required) | Container name on the host. |
+| `dockerfile` | `Dockerfile` | Path to the Dockerfile, relative to the repo root. Override for monorepos that build several images. |
 | `host-port` | — (required) | Port published on the host. |
 | `container-port` | `80` | Port the app listens on inside the container. |
 | `aspnetcore-environment` | `Production` | `ASPNETCORE_ENVIRONMENT` value. |
