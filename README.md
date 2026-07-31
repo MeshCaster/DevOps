@@ -188,7 +188,8 @@ Per-app and shared infrastructure compose stacks live in
 | `image-name` | — (required) | GHCR image name (without owner). |
 | `container-name` | — (required) | Container name on the host. |
 | `dockerfile` | `Dockerfile` | Path to the Dockerfile, relative to the repo root. Override for monorepos that build several images. |
-| `host-port` | — (required) | Port published on the host. |
+| `host-port` | — | Port published on the host. Omit to publish no port at all — correct for containers reached only over the Docker network (e.g. behind a cloudflared tunnel). |
+| `bind-address` | `""` | Interface the published port binds to. Empty = Docker's `0.0.0.0`, i.e. internet-reachable. Set `127.0.0.1` for anything that must only be reached via a proxy — Docker's iptables rules bypass most host firewalls. Ignored when `host-port` is unset. |
 | `container-port` | `80` | Port the app listens on inside the container. |
 | `aspnetcore-environment` | `Production` | `ASPNETCORE_ENVIRONMENT` value. |
 | `volume-args` | `""` | Extra `docker run` volume flags (single line). |
