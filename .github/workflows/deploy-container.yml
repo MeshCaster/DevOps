@@ -63,9 +63,20 @@ on:
         type: string
         default: Dockerfile
       host-port:
-        description: Port published on the host
+        description: >-
+          Port published on the host. Leave unset to publish NO port at all — correct for
+          containers reached only over the Docker network (a cloudflared tunnel dialling the
+          container by name, or a sidecar), which never need a host-side listener.
         type: number
-        required: true
+        required: false
+      bind-address:
+        description: >-
+          Host interface the published port binds to. Empty means Docker's default of 0.0.0.0,
+          i.e. reachable from the internet. Set 127.0.0.1 for anything that must only be reached
+          through a proxy — Docker's iptables rules bypass most host firewalls, so a published
+          port is exposed even when ufw says otherwise. Ignored when host-port is unset.
+        type: string
+        default: ""
       container-port:
         description: Port the app listens on inside the container
         type: number
@@ -174,7 +185,7 @@ jobs:
             docker run -d \
               --name ${{ inputs.container-name }} \
               ${{ inputs.network && format('--network {0}', inputs.network) || '' }} \
-              -p ${{ inputs.host-port }}:${{ inputs.container-port }} \
+              ${{ inputs.host-port && format('-p {0}{1}:{2}', inputs.bind-address && format('{0}:', inputs.bind-address) || '', inputs.host-port, inputs.container-port) || '' }} \
               ${{ inputs.volume-args }} \
               ${{ inputs.env-file && format('--env-file {0}', inputs.env-file) || '' }} \
               --restart unless-stopped \
