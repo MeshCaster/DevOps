@@ -160,6 +160,7 @@ Per-app and shared infrastructure compose stacks live in
 |-------|-------------|
 | [`applications/infrastructure/common`](applications/infrastructure/common/README.md) | Shared Postgres + RabbitMQ + Redis on the `meshcaster` network. |
 | [`applications/Mediathek`](applications/Mediathek/nginx/mediathek.conf) | nginx vhosts for the Meshcaster.Mediathek API + admin panel. |
+| [`applications/BeautyBook`](applications/BeautyBook/README.md) | nginx vhost for the BeautyBook API, plus the runbook for the tunnel-served admin panel and its salon-owner sign-in. |
 
 ## Inputs
 
