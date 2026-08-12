@@ -58,10 +58,20 @@ Add to `/opt/meshcaster/beautybook-admin.env`:
 ```
 Identity__PanelClientId=beautybook-panel
 Identity__PanelClientSecret=<the same secret>
+Panel__RootUsers=you@example.com,colleague@example.com
 ```
 
 `Identity__Authority` is already published in the image
 (`https://identity.in-vent.online`). Redeploy the panel.
+
+**`Panel__RootUsers` is not optional in practice.** It is the list of emails treated as platform
+operators, and without it nobody reaches the platform-wide pages: the alternative test is Identity's
+global `root` role, which is granted only by Identity's demo-data seeder and is therefore held by no
+production account. Get it wrong and you sign in successfully, land on `/no-access`, and need
+another deploy to get back — so check the addresses against the Identity accounts you actually sign
+in with, and use the same comma-separated form above (docker env files understand no array syntax).
+
+The panel logs a warning at startup when sign-in is on and this list is empty.
 
 At this point every visitor is asked to sign in. Operators need the global `root` role in Identity;
 a salon's own people need to be members of that salon's organization, which is what puts
@@ -81,7 +91,8 @@ then would leave it open.
 
 ## Rolling back
 
-Remove `Identity__PanelClientId` / `Identity__PanelClientSecret` from the panel's env file and
+Remove `Identity__PanelClientId` / `Identity__PanelClientSecret` / `Panel__RootUsers` from the
+panel's env file and
 redeploy. Sign-in switches off and the panel returns to its previous behaviour. Put the Access
 policy back at the same time — without it the panel would then be open.
 
