@@ -7,6 +7,7 @@ Two containers on the shared `meshcaster` network, both deployed from
 |-----------|-------------|-----------|
 | `beautybook-api` | nginx → `beautybook.in-vent.online` ([vhost](nginx/beautybook.conf)) | 5110 |
 | `beautybook-admin` | Cloudflare tunnel → `beautybook-admin.in-vent.online` | none |
+| `beautybook-my` | nginx → `beautybook-my.in-vent.online` | none |
 
 The panel's hostname is **second-level on purpose**. Cloudflare's Universal SSL covers
 `*.in-vent.online` and no deeper, so a third-level name like `admin.beautybook.in-vent.online`
@@ -16,8 +17,28 @@ only works because **nginx** terminates TLS for it with a per-hostname Let's Enc
 that does not transfer to a tunnel-served host.) Anything reached through the tunnel needs either a
 second-level name or an Advanced Certificate.
 
-The panel publishes no host port on purpose. nginx never proxies it, so it cannot be reached by
-IP or by a stray `Host` header — only down the tunnel.
+The operator panel publishes no host port on purpose. nginx never proxies it, so it cannot be
+reached by IP or by a stray `Host` header — only down the tunnel.
+
+`beautybook-my` is the **same image** run a second time for salon owners, who cannot pass the
+tunnel's Access policy because that policy is an operator email list. Its env file sets
+`Panel__SalonOnly=true`, which makes it refuse the platform-wide pages to everyone — the image
+picks between the two consoles by claim, so without that flag an operator signing in there would
+have root CRUD over every salon from a public URL. It also deliberately omits
+`Identity__ClientSecret`: the machine-to-machine token is only fetched for a root operator, and
+there cannot be one, so the internet-facing container never holds the platform-wide credential.
+
+Its env file (`/opt/meshcaster/beautybook-my.env`), created once:
+
+```
+Panel__SalonOnly=true
+Identity__PanelClientId=beautybook-panel
+Identity__PanelClientSecret=<same value as the admin instance>
+```
+
+Startup fails outright if `Panel__SalonOnly` is set without sign-in configured — honouring it
+without an authentication scheme yields a 500 on every page, and ignoring it would publish the
+platform-wide surface.
 
 ## Turning on salon-owner sign-in
 
