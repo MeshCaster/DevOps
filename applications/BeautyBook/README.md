@@ -6,7 +6,15 @@ Two containers on the shared `meshcaster` network, both deployed from
 | Container | Reached via | Host port |
 |-----------|-------------|-----------|
 | `beautybook-api` | nginx → `beautybook.in-vent.online` ([vhost](nginx/beautybook.conf)) | 5110 |
-| `beautybook-admin` | Cloudflare tunnel → `admin.beautybook.in-vent.online` | none |
+| `beautybook-admin` | Cloudflare tunnel → `beautybook-admin.in-vent.online` | none |
+
+The panel's hostname is **second-level on purpose**. Cloudflare's Universal SSL covers
+`*.in-vent.online` and no deeper, so a third-level name like `admin.beautybook.in-vent.online`
+cannot complete a TLS handshake at all — it resolves to Cloudflare and then fails, which reads like
+an outage rather than a missing certificate. (`admin.mediathek.in-vent.online` has the same shape and
+only works because **nginx** terminates TLS for it with a per-hostname Let's Encrypt certificate;
+that does not transfer to a tunnel-served host.) Anything reached through the tunnel needs either a
+second-level name or an Advanced Certificate.
 
 The panel publishes no host port on purpose. nginx never proxies it, so it cannot be reached by
 IP or by a stray `Host` header — only down the tunnel.
@@ -39,12 +47,11 @@ On the host, add to Identity's env file:
 
 ```
 BeautyBook__PanelClientSecret=<the secret>
-BeautyBook__PanelRedirectUris__0=https://admin.beautybook.in-vent.online/signin-oidc
-BeautyBook__PanelPostLogoutRedirectUris__0=https://admin.beautybook.in-vent.online/signout-callback-oidc
 Seeding__BeautyBookPanelClient=true
 ```
 
-Then redeploy Identity. OpenIddict matches redirect URIs **exactly**, and the seeder refuses to fall
+The redirect URIs themselves live in Identity's `appsettings.Production.json` and need nothing
+here. Then redeploy Identity. OpenIddict matches redirect URIs **exactly**, and the seeder refuses to fall
 back to its localhost development default outside Development — so a missing or wrong URI fails
 startup by name rather than surfacing later as `invalid_redirect_uri` at sign-in.
 
@@ -58,6 +65,7 @@ Add to `/opt/meshcaster/beautybook-admin.env`:
 ```
 Identity__PanelClientId=beautybook-panel
 Identity__PanelClientSecret=<the same secret>
+Panel__RootUsers=you@example.com,colleague@example.com
 Panel__RootUsers=you@example.com,colleague@example.com
 ```
 
@@ -79,7 +87,7 @@ a salon's own people need to be members of that salon's organization, which is w
 
 ### 4. Remove the Cloudflare Access policy
 
-Zero Trust → Access → Applications → the app for `admin.beautybook.in-vent.online`.
+Zero Trust → Access → Applications → the app for `beautybook-admin.in-vent.online`.
 
 Access authenticates against an **operator email allow-list**, so leaving it on means no salon owner
 can reach the panel at all. The panel authenticates its own users now, and the API independently
