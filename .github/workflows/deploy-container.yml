@@ -32,6 +32,11 @@ name: Deploy container to CONTABO
 #     extra-env: "-e NODE_ENV=production -e PORT=3000 -e HOSTNAME=0.0.0.0"
 #     network: meshcaster
 #
+# Two environments from one repo: give each branch its own workflow file and its own
+# `image-tag` + `container-name`. They share the image, not the tag.
+#   dev.yml         with: { image-name: cloudy-api, image-tag: dev,    container-name: cloudy-api-dev }
+#   production.yml  with: { image-name: cloudy-api, image-tag: latest, container-name: cloudy-api }
+#
 # Monorepo building several images: call this workflow once per image and point
 # `dockerfile` at each one (the build context stays the repo root).
 #   with:
@@ -62,6 +67,24 @@ on:
         description: Path to the Dockerfile, relative to the repo root. Override for monorepos that build several images (e.g. src/My.Api/Dockerfile).
         type: string
         default: Dockerfile
+      image-tag:
+        description: >-
+          Moving tag to build and deploy. Defaults to `latest`, so single-environment callers
+          need no change. Give each environment its OWN tag (e.g. `dev` from the dev branch):
+          two branches sharing one tag overwrite each other's deploy silently — a dev push
+          becomes whatever production pulls on its next restart, with nothing to see in either
+          run. The immutable `:<sha>` tag is always pushed alongside, whatever this is set to.
+        type: string
+        default: latest
+      build-args:
+        description: >-
+          Multiline "KEY=value" pairs passed as Docker build args. For build-time configuration
+          that cannot be injected at `docker run` — notably Next.js `NEXT_PUBLIC_*`, which is
+          inlined into the client bundle during `next build`, so setting it via extra-env only
+          reaches the server process and leaves the browser on the build-time default.
+          NOT for secrets: build args are visible in `docker history`. Use `build-secrets`.
+        type: string
+        default: ""
       host-port:
         description: >-
           Port published on the host. Leave unset to publish NO port at all — correct for
@@ -155,8 +178,9 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: true
           secrets: ${{ secrets.build-secrets }}
+          build-args: ${{ inputs.build-args }}
           tags: |
-            ${{ steps.img.outputs.ref }}:latest
+            ${{ steps.img.outputs.ref }}:${{ inputs.image-tag }}
             ${{ steps.img.outputs.ref }}:${{ github.sha }}
 
       - name: Deploy to CONTABO
@@ -174,8 +198,8 @@ jobs:
             # Login to GitHub Container Registry
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Pull latest image
-            docker pull ${{ steps.img.outputs.ref }}:latest
+            # Pull the tag this environment owns
+            docker pull ${{ steps.img.outputs.ref }}:${{ inputs.image-tag }}
 
             # Stop and remove old container
             docker stop ${{ inputs.container-name }} || true
@@ -192,7 +216,7 @@ jobs:
               ${{ inputs.aspnetcore && format('-e ASPNETCORE_ENVIRONMENT={0}', inputs.aspnetcore-environment) || '' }} \
               ${{ inputs.aspnetcore && format('-e ASPNETCORE_URLS=http://+:{0}', inputs.container-port) || '' }} \
               ${{ inputs.extra-env }} \
-              ${{ steps.img.outputs.ref }}:latest
+              ${{ steps.img.outputs.ref }}:${{ inputs.image-tag }}
 
             # `docker run -d` exits 0 once the container is *created*, so a container
             # that boots and dies immediately (bad config, missing env) still looks
