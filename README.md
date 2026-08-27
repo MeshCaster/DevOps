@@ -112,6 +112,33 @@ jobs:
       ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
 ```
 
+### Two environments from one repo
+
+A `dev` branch and a `main` branch, deploying the same app side by side. They share
+one GHCR image and differ by **tag** and **container name** — if both used the
+default `latest`, a dev push would become whatever production pulls on its next
+restart, and neither workflow run would show anything wrong.
+
+```yaml
+# .github/workflows/dev.yml
+on:
+  push: { branches: [dev] }
+
+jobs:
+  deploy:
+    uses: MeshCaster/DevOps/.github/workflows/deploy-container.yml@main
+    with:
+      image-name: cloudy-api        # same image
+      image-tag: dev                # different tag
+      container-name: cloudy-api-dev
+      aspnetcore-environment: Development
+      env-file: /opt/meshcaster/cloudy-api-dev.env
+      network: meshcaster
+```
+
+`production.yml` is the same file with `image-tag: latest` (or omitted),
+`container-name: cloudy-api`, and the production env file.
+
 ### Deploy several images from one repo
 
 Call the workflow once per image and point `dockerfile` at each one; the build
@@ -189,6 +216,8 @@ Per-app and shared infrastructure compose stacks live in
 | `image-name` | — (required) | GHCR image name (without owner). |
 | `container-name` | — (required) | Container name on the host. |
 | `dockerfile` | `Dockerfile` | Path to the Dockerfile, relative to the repo root. Override for monorepos that build several images. |
+| `image-tag` | `latest` | Moving tag to build and deploy. **Give each environment its own** — two branches sharing one tag silently overwrite each other's deploy. `:<sha>` is always pushed alongside. |
+| `build-args` | `""` | Multiline `KEY=value` build args, for build-time config that cannot be set at `docker run` (Next.js `NEXT_PUBLIC_*`). Not for secrets — visible in `docker history`; use `build-secrets`. |
 | `host-port` | — | Port published on the host. Omit to publish no port at all — correct for containers reached only over the Docker network (e.g. behind a cloudflared tunnel). |
 | `bind-address` | `""` | Interface the published port binds to. Empty = Docker's `0.0.0.0`, i.e. internet-reachable. Set `127.0.0.1` for anything that must only be reached via a proxy — Docker's iptables rules bypass most host firewalls. Ignored when `host-port` is unset. |
 | `container-port` | `80` | Port the app listens on inside the container. |
