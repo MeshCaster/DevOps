@@ -15,6 +15,15 @@ on:
         description: Build configuration
         type: string
         default: "Release"
+    secrets:
+      packages-token:
+        description: >
+          PAT with read:packages, for a library that CONSUMES another MeshCaster package.
+          GITHUB_TOKEN can publish to this org, but it cannot read a package published from a
+          different repository unless that package has granted this one access — the restore
+          comes back 403 Forbidden, having authenticated perfectly well. Leave it unset for a
+          library with no MeshCaster.* dependencies; GITHUB_TOKEN is enough there.
+        required: false
 
 permissions:
   contents: read
@@ -33,8 +42,11 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
+      # Restore and push are authenticated separately on purpose. Pushing is always
+      # GITHUB_TOKEN's job — it owns this repo's packages. Reading somebody else's needs the
+      # PAT when one is supplied, and falls back so every existing caller is unaffected.
       - name: Add GitHub Packages source
-        run: dotnet nuget add source "https://nuget.pkg.github.com/Meshcaster/index.json" --name github --username Meshcaster --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+        run: dotnet nuget add source "https://nuget.pkg.github.com/Meshcaster/index.json" --name github --username Meshcaster --password ${{ secrets.packages-token || secrets.GITHUB_TOKEN }} --store-password-in-clear-text
 
       - name: Restore dependencies
         run: dotnet restore ${{ inputs.project-path }}
