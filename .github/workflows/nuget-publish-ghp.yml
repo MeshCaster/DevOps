@@ -45,8 +45,13 @@ jobs:
       # Restore and push are authenticated separately on purpose. Pushing is always
       # GITHUB_TOKEN's job — it owns this repo's packages. Reading somebody else's needs the
       # PAT when one is supplied, and falls back so every existing caller is unaffected.
+      #
+      # The username is the actor, not the org. GitHub Packages validates the pair, so a user's
+      # PAT presented under the organisation's name is refused 403 — which reads exactly like a
+      # missing package permission and is not. This is the shape Identity's Dockerfile already
+      # uses, and the reason its restore of these same packages works.
       - name: Add GitHub Packages source
-        run: dotnet nuget add source "https://nuget.pkg.github.com/Meshcaster/index.json" --name github --username Meshcaster --password ${{ secrets.packages-token || secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+        run: dotnet nuget add source "https://nuget.pkg.github.com/Meshcaster/index.json" --name github --username ${{ github.actor }} --password ${{ secrets.packages-token || secrets.GITHUB_TOKEN }} --store-password-in-clear-text
 
       - name: Restore dependencies
         run: dotnet restore ${{ inputs.project-path }}
