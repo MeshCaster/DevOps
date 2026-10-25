@@ -4,7 +4,7 @@
 # Run ON the host (or stream it:  ssh contabo 'bash -s' < bootstrap-env.sh), once before
 # the first API deploy. Safe to re-run: existing env files and secrets are never replaced.
 #
-# Also writes the Motors Admin (Blazor) env file and adds its Admin__* settings to the API env.
+# Also writes the Motors Admin and Motor website env files and adds Admin__*/Site__IpSalt to the API env.
 #
 # Motors needs TimescaleDB, which the shared meshcaster-postgres (postgres:16) doesn't have,
 # so it gets its own Postgres on the `meshcaster` network with no published port. Messaging
@@ -22,6 +22,7 @@ PG_IMAGE=timescale/timescaledb:latest-pg17
 PG_ENV="$ENV_DIR/motors-postgres.env"
 API_ENV="$ENV_DIR/motors-api.env"
 ADMIN_ENV="$ENV_DIR/motors-admin.env"
+WEB_ENV="$ENV_DIR/motors-web.env"
 IDENTITY_AUTHORITY="${IDENTITY_AUTHORITY:-https://identity.in-vent.online}"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -75,6 +76,8 @@ fi
 ensure_line() { grep -q "^$2=" "$1" || echo "$2=$3" >> "$1"; }
 ensure_line "$API_ENV" Admin__Authority "$IDENTITY_AUTHORITY"
 ensure_line "$API_ENV" Admin__Audience motors-admin-api
+# Salt for the hashed IPs stored with website form submissions.
+ensure_line "$API_ENV" Site__IpSalt "$(rand 48 40)"
 
 if [ -f "$ADMIN_ENV" ]; then
   echo "kept existing $ADMIN_ENV"
@@ -92,7 +95,22 @@ EOF
   echo "wrote $ADMIN_ENV (new Oidc client secret: copy it to Identity as Motors__AdminClientSecret)"
 fi
 
-chmod 600 "$PG_ENV" "$API_ENV" "$ADMIN_ENV"
+if [ -f "$WEB_ENV" ]; then
+  echo "kept existing $WEB_ENV"
+else
+  cat > "$WEB_ENV" <<EOF
+# Motor info website (Blazor static SSR). No secrets: it reads public catalog endpoints and posts forms.
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+# Server-to-server over the docker network; image URLs point at the public API origin.
+Api__BaseUrl=http://motors-api:8080
+Api__PublicBaseUrl=https://$DOMAIN
+Site__PublicUrl=https://motor.in-vent.online
+EOF
+  echo "wrote $WEB_ENV"
+fi
+
+chmod 600 "$PG_ENV" "$API_ENV" "$ADMIN_ENV" "$WEB_ENV"
 
 if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
   echo "$PG_CONTAINER already exists"
@@ -109,5 +127,6 @@ fi
 
 echo
 echo "next: deploy motors-api (--env-file $API_ENV --network $NETWORK -v motors_storage:/app/storage)"
-echo "      and motors-admin (--env-file $ADMIN_ENV --network $NETWORK), add nginx/motors.conf and"
-echo "      nginx/motors-admin.conf, request both certs, and set Identity's Motors__AdminClientSecret."
+echo "      motors-admin (--env-file $ADMIN_ENV --network $NETWORK) and motors-web (--env-file $WEB_ENV),"
+echo "      add nginx/motors.conf, motors-admin.conf and motors-web.conf, request the certs, and set"
+echo "      Identity's Motors__AdminClientSecret."
