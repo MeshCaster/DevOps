@@ -12,13 +12,14 @@
 #   redis         -> localhost:16379   (remote 6379)
 #   rabbitmq      -> localhost:15672   (remote 5672,  AMQP)
 #   rabbitmq-ui   -> localhost:15673   (remote 15672, management UI)
+#   vault         -> localhost:18200   (remote 8200,  API + UI)
 #
 # Usage:
 #   ./tunnel.sh [options] <user@host>
 #
 #   -p <port>          SSH port (default: 22).
 #   -i <identity>      SSH private key (e.g. ~/.ssh/meshcaster_contabo).
-#   --service <svc>    postgres | redis | rabbitmq | rabbitmq-ui | all
+#   --service <svc>    postgres | redis | rabbitmq | rabbitmq-ui | vault | all
 #                      (repeatable; default: postgres).
 #   --local-port <n>   Override the local port (only with a single --service).
 #   -h, --help         Show this help.
@@ -52,7 +53,8 @@ svc_map() {
     redis)       echo "6379:16379" ;;
     rabbitmq)    echo "5672:15672" ;;
     rabbitmq-ui) echo "15672:15673" ;;
-    *) die "unknown service: $1 (postgres|redis|rabbitmq|rabbitmq-ui|all)" ;;
+    vault)       echo "8200:18200" ;;
+    *) die "unknown service: $1 (postgres|redis|rabbitmq|rabbitmq-ui|vault|all)" ;;
   esac
 }
 
@@ -73,7 +75,7 @@ done
 
 # Expand "all"
 if printf '%s\n' "${SERVICES[@]}" | grep -qx all; then
-  SERVICES=(postgres redis rabbitmq rabbitmq-ui)
+  SERVICES=(postgres redis rabbitmq rabbitmq-ui vault)
 fi
 
 if [[ -n "$LOCAL_PORT_OVERRIDE" && ${#SERVICES[@]} -ne 1 ]]; then

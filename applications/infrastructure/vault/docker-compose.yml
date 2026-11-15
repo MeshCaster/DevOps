@@ -1,0 +1,110 @@
+name: meshcaster-vault
+
+# HashiCorp Vault — the single source of truth for application secrets on the host.
+# Apps log in with AppRole over the shared `meshcaster` network and read their
+# configuration from the `meshcaster/` KV v2 mount, so a deploy no longer needs a
+# per-app .env file full of passwords.
+#
+# Bring it up once per server, alongside applications/infrastructure/common:
+#
+#   Deploy:              tools/vault/deploy-vault.sh <user@host>
+#   Then, exactly once:  tools/vault/init-vault.sh   <user@host>
+#   Per app:             tools/vault/provision-app.sh <user@host> <app-name>
+#
+# The entire server config lives in VAULT_LOCAL_CONFIG below: the image entrypoint
+# writes it to /vault/config/local.json and runs `vault server -config=/vault/config`,
+# so no config file is ever copied to the host.
+
+services:
+  vault:
+    image: hashicorp/vault:2.0.3
+    container_name: meshcaster-vault
+    restart: unless-stopped
+    command: server
+    environment:
+      # disable_mlock is REQUIRED here: Vault 2.0.2+ ships the official image without
+      # the IPC_LOCK capability, so mlock() cannot succeed. Keep swap disabled (or
+      # encrypted) on the host — that is the leak mlock would otherwise have prevented.
+      # The raft path is /vault/file (not the more obvious /vault/data) because that
+      # directory already exists in the image owned by the non-root `vault` user. A
+      # named volume mounted onto an existing path inherits its ownership; mounted on
+      # a path Docker has to invent, it would be root-owned and Vault could not write
+      # its bolt database.
+      VAULT_LOCAL_CONFIG: |
+        {
+          "storage":       { "raft": { "path": "/vault/file", "node_id": "meshcaster-vault-1" } },
+          "listener":      { "tcp":  { "address": "0.0.0.0:8200", "tls_disable": true } },
+          "api_addr":      "http://meshcaster-vault:8200",
+          "cluster_addr":  "http://meshcaster-vault:8201",
+          "disable_mlock": true,
+          "ui":            true
+        }
+      # Lets `docker exec meshcaster-vault vault ...` work without -address.
+      VAULT_ADDR: http://127.0.0.1:8200
+    ports:
+      # Loopback only. Apps reach Vault over the `meshcaster` network by container
+      # name; this published port is purely for admin access, which you get with
+      # `tools/infra/tunnel.sh --service vault`. Never publish 8200 to 0.0.0.0.
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - meshcaster_vault:/vault/file
+    healthcheck:
+      # `vault status` exits 0 when unsealed, 2 when sealed, 1 on a real error. A
+      # sealed Vault is still a live process (the unsealer fixes that), so only a
+      # non-2 failure counts as unhealthy.
+      test: ["CMD-SHELL", "vault status >/dev/null 2>&1 || [ $$? -eq 2 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Vault boots SEALED and answers nothing until unsealed. This sidecar watches for
+  # that and applies the keys, so a host reboot brings everything back with no human
+  # in the loop. It is the deliberate tradeoff for auto-unseal: the keys sit on the
+  # host at /etc/meshcaster/vault/keys (root-only, 0600).
+  unsealer:
+    image: hashicorp/vault:2.0.3
+    container_name: meshcaster-vault-unsealer
+    restart: unless-stopped
+    depends_on:
+      - vault
+    # Runs as root purely to read that root-owned 0600 key file. The keys are never
+    # baked into the image and never appear in `docker inspect` output.
+    user: root
+    environment:
+      VAULT_ADDR: http://meshcaster-vault:8200
+    volumes:
+      # A directory mount, not a file mount: init-vault.sh writes `keys` later, and a
+      # bind-mount of a not-yet-existing file makes Docker helpfully invent a directory.
+      - /etc/meshcaster/vault:/unseal:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "unsealer: watching meshcaster-vault"
+        while true; do
+          vault status >/dev/null 2>&1
+          rc=$$?
+          if [ "$$rc" -eq 2 ] && [ -s /unseal/keys ]; then
+            echo "unsealer: vault is sealed - applying keys"
+            while IFS= read -r key || [ -n "$$key" ]; do
+              [ -n "$$key" ] || continue
+              vault status >/dev/null 2>&1 && break
+              vault operator unseal "$$key" >/dev/null 2>&1 || true
+            done < /unseal/keys
+            if vault status >/dev/null 2>&1; then
+              echo "unsealer: vault is unsealed"
+            else
+              echo "unsealer: still sealed after applying keys (is it initialized?)"
+            fi
+          fi
+          sleep 15
+        done
+
+volumes:
+  meshcaster_vault:
+    name: meshcaster_vault
+
+networks:
+  default:
+    name: meshcaster        # the shared external network apps attach to
+    external: true
