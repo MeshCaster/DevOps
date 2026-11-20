@@ -151,6 +151,12 @@ on:
 
 jobs:
   build-and-deploy:
+    # One deploy per container at a time, across every caller. Two runs for the same container used
+    # to race between `docker rm` and `docker run` ("container name already in use"), and the
+    # survivor could ship the older image. A newer pending run replaces an older pending one.
+    concurrency:
+      group: deploy-${{ inputs.container-name }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
 
     steps:
@@ -228,6 +234,19 @@ jobs:
               exit 1
             fi
             echo "Container ${{ inputs.container-name }} is up."
+
+            # nginx resolves `proxy_pass http://<container>:<port>` once, at config load, and keeps
+            # that IP. A recreated container can come back on a different IP, and nginx then
+            # answers 502 until it is reloaded. Reload is graceful (no dropped connections) and is
+            # skipped if the config does not validate or the proxy is not on this host.
+            if docker ps --format '{{.Names}}' | grep -qx nginx-proxy; then
+              if docker exec nginx-proxy nginx -t >/dev/null 2>&1; then
+                docker exec nginx-proxy nginx -s reload && echo "nginx-proxy reloaded."
+              else
+                echo "::warning::nginx-proxy config does not validate; not reloading"
+                docker exec nginx-proxy nginx -t || true
+              fi
+            fi
 
             # Cleanup old images
             docker image prune -f
