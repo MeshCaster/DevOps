@@ -176,6 +176,7 @@ Host-side tooling lives in [`tools/`](tools/):
 | [`tools/nginx`](tools/nginx/README.md) | Containerized nginx reverse proxy with Let's Encrypt SSL + websockets. |
 | [`tools/ssh-keys`](tools/ssh-keys/README.md) | Generate provider-scoped SSH deploy keys to migrate apps (Hostinger → CONTABO). |
 | [`tools/infra`](tools/infra/README.md) | Deploy the shared Postgres/RabbitMQ/Redis stack to a remote host with generated secrets (no `.env` on the server). |
+| [`tools/vault`](tools/vault/README.md) | Deploy, initialize (auto-unseal), and provision apps in HashiCorp Vault; move env files into it and create UI logins for managing secrets. |
 | [`tools/transfer`](tools/transfer/README.md) | Copy directories (e.g. upload folders) between servers with resumable rsync-over-SSH. |
 
 ## Applications
@@ -186,6 +187,7 @@ Per-app and shared infrastructure compose stacks live in
 | Stack | Description |
 |-------|-------------|
 | [`applications/infrastructure/common`](applications/infrastructure/common/README.md) | Shared Postgres + RabbitMQ + Redis on the `meshcaster` network. |
+| [`applications/infrastructure/vault`](applications/infrastructure/vault/README.md) | HashiCorp Vault secret store (KV v2 + AppRole) with an auto-unseal sidecar. Apps read config via the [`MeshCaster.Configuration.Vault`](https://github.com/MeshCaster/MeshCaster.Configuration.Vault) package. |
 | [`applications/Mediathek`](applications/Mediathek/nginx/mediathek.conf) | nginx vhosts for the Meshcaster.Mediathek API + admin panel. |
 | [`applications/BeautyBook`](applications/BeautyBook/README.md) | nginx vhost for the BeautyBook API, plus the runbook for the tunnel-served admin panel and its salon-owner sign-in. |
 
