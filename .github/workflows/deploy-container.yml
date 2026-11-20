@@ -241,7 +241,15 @@ jobs:
             # skipped if the config does not validate or the proxy is not on this host.
             if docker ps --format '{{.Names}}' | grep -qx nginx-proxy; then
               if docker exec nginx-proxy nginx -t >/dev/null 2>&1; then
-                docker exec nginx-proxy nginx -s reload && echo "nginx-proxy reloaded."
+                # A reload re-resolves EVERY vhost's upstream; one stopped container anywhere on the
+                # host makes nginx refuse it ("host not found in upstream") and keep the old config.
+                # That must not fail this app's deploy, but it must be visible.
+                if docker exec nginx-proxy nginx -s reload 2>/tmp/nginx-reload.err; then
+                  echo "nginx-proxy reloaded."
+                else
+                  echo "::warning::nginx-proxy refused the reload; ${{ inputs.container-name }} may answer 502 until it is reloaded"
+                  cat /tmp/nginx-reload.err || true
+                fi
               else
                 echo "::warning::nginx-proxy config does not validate; not reloading"
                 docker exec nginx-proxy nginx -t || true
